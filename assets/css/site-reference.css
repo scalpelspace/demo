@@ -1,0 +1,912 @@
+/* ==========================================================================
+   ScalpelSpace - site styles
+   Single stylesheet, no build step, no dependencies.
+   ========================================================================== */
+
+/* --- Tokens ------------------------------------------------------------- */
+
+:root {
+  --bg: #ffffff;
+  --bg-raised: #fafafa;
+  --bg-header: rgba(255, 255, 255, 0.8);
+  --text: #16161a;
+  --text-muted: #5c5c66;
+  --text-faint: #85858f;
+  --border: #e4e4e9;
+  --border-strong: #d0d0d8;
+  --accent: #7a00d4;
+  --accent-hover: #5c00a8;
+  --grad-a: #a800f0;
+  --grad-b: #2200cc;
+  --shadow-lift: 0 2px 4px rgba(16, 16, 32, 0.06), 0 16px 40px rgba(16, 16, 32, 0.1);
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+  Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+  "Liberation Mono", monospace;
+
+  --radius: 12px;
+  --radius-lg: 16px;
+  --container: 1040px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0c10;
+    --bg-raised: #141419;
+    --bg-header: rgba(12, 12, 16, 0.8);
+    --text: #f2f2f5;
+    --text-muted: #a0a0ad;
+    --text-faint: #77777f;
+    --border: #26262e;
+    --border-strong: #35353f;
+    --accent: #b46bff;
+    --accent-hover: #cb99ff;
+    --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* --- Base --------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.1em 0.4em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip-link:focus {
+  left: 16px;
+  top: 16px;
+  z-index: 100;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 16px;
+}
+
+/* --- Header ------------------------------------------------------------- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-header);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.site-header .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 64px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-weight: 650;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+}
+
+.brand:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand img {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.site-nav a {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  padding: 7px 11px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.site-nav a:hover {
+  color: var(--text);
+  background: var(--bg-raised);
+  text-decoration: none;
+}
+
+.site-nav a[aria-current="page"] {
+  color: var(--text);
+  background: var(--bg-raised);
+}
+
+.site-nav .ext::after {
+  content: "\2197";
+  font-size: 0.75em;
+  margin-left: 4px;
+  opacity: 0.6;
+  vertical-align: 1px;
+}
+
+/* --- Main sections ------------------------------------------------------ */
+
+main {
+  flex: 1 0 auto;
+}
+
+.hero {
+  text-align: center;
+  padding: clamp(44px, 8vh, 88px) 0 clamp(32px, 5vh, 48px);
+}
+
+.hero-mark {
+  width: clamp(64px, 9vh, 84px);
+  height: auto;
+  margin: 0 auto 24px;
+  display: block;
+}
+
+.hero h1 {
+  font-size: clamp(2.25rem, 6vw, 3.5rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.hero .tagline {
+  margin: 18px auto 0;
+  max-width: 46ch;
+  font-size: clamp(1.0625rem, 2.2vw, 1.1875rem);
+  color: var(--text-muted);
+  text-wrap: balance;
+}
+
+.page-head {
+  padding: clamp(48px, 9vh, 80px) 0 8px;
+}
+
+.page-head h1 {
+  font-size: clamp(1.875rem, 4.5vw, 2.5rem);
+}
+
+.page-head .lede {
+  margin-top: 14px;
+  max-width: 62ch;
+  font-size: 1.0625rem;
+  color: var(--text-muted);
+}
+
+.section {
+  padding: clamp(36px, 6vh, 56px) 0;
+}
+
+/*
+ * For a section whose prose continues directly from the .page-head lede. The
+ * default section padding puts a section break between two paragraphs that
+ * are meant to read as one flow. Must stay after .section: equal specificity,
+ * so source order decides.
+ */
+.section-flush {
+  padding-top: 20px;
+}
+
+.section-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-faint);
+  margin-bottom: 20px;
+}
+
+/* --- Destination cards (home) ------------------------------------------- */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  /* The footer already contributes its own top margin below this. */
+  padding-bottom: clamp(24px, 4vh, 40px);
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 26px 24px 24px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  /* Clips the ::before accent bar to the card's own rounded corners. */
+  overflow: hidden;
+  color: var(--text);
+  text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease,
+  border-color 0.18s ease;
+}
+
+/*
+ * No border-radius here on purpose. A 3px tall box cannot hold a 16px corner:
+ * the spec scales oversized radii down proportionally, so the bar would end up
+ * with ~3px corners and cut straight across the card's 16px curve. The card
+ * clips it to the correct shape instead.
+ */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+  border-color: var(--border-strong);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
+.card-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 1.1875rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.card-name .arrow {
+  color: var(--text-faint);
+  font-size: 1rem;
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+
+.card:hover .arrow {
+  color: var(--accent);
+  transform: translate(2px, -2px);
+}
+
+.card p {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+/* --- Products banner (home) --------------------------------------------- */
+
+/*
+ * Deliberately not a .card and not a grid item. The three cards above are the
+ * quick exits to Docs, Shop, and GitHub; this is the "keep reading" surface,
+ * so it takes a different shape, its own spacing, and a persistent accent
+ * edge rather than the cards' hover-only bar.
+ */
+.promo {
+  padding: clamp(32px, 6vh, 56px) 0 clamp(48px, 8vh, 88px);
+}
+
+.promo-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px 44px;
+  padding: 36px 36px 36px 40px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  color: var(--text);
+  transition: transform 0.18s ease, box-shadow 0.18s ease,
+  border-color 0.18s ease;
+}
+
+/* Vertical accent edge, always visible. Clipped by the parent's overflow. */
+.promo-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--grad-a), var(--grad-b));
+}
+
+.promo-banner:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+  border-color: var(--border-strong);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.promo-text {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+
+.promo-eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+
+.promo-title {
+  display: block;
+  font-size: clamp(1.5rem, 3vw, 1.875rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.promo-desc {
+  display: block;
+  margin-top: 10px;
+  max-width: 56ch;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.promo-cta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--grad-a), var(--grad-b));
+  color: #ffffff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: filter 0.18s ease;
+}
+
+.promo-cta .arrow {
+  transition: transform 0.18s ease;
+}
+
+.promo-banner:hover .promo-cta {
+  filter: brightness(1.12);
+}
+
+.promo-banner:hover .promo-cta .arrow {
+  transform: translateX(3px);
+}
+
+@media (max-width: 560px) {
+  .promo-banner {
+    padding: 28px 24px 28px 28px;
+  }
+
+  .promo-cta {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* --- Tag filter --------------------------------------------------------- */
+
+/*
+ * Pure CSS filtering. Each .product carries a space separated data-tags list;
+ * a checked radio inside .filter-scope hides every product that lacks the
+ * matching tag. Add a tag by adding one chip, one rule below, and the tag
+ * itself to the relevant data-tags attributes.
+ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 24px 0 6px;
+  border: 0;
+  min-width: 0; /* Fieldsets default to min-content, which can overflow. */
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 15px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+/* Kept in the accessibility tree and tab order, just not painted. */
+.chip input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+}
+
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.chip:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Same gradient-over-transparent-border case as .btn-primary. */
+.chip:has(:checked) {
+  background: linear-gradient(135deg, var(--grad-a), var(--grad-b));
+  background-origin: border-box;
+  border-color: transparent;
+  color: #ffffff;
+}
+
+/* One rule per tag. "All" needs none: nothing is hidden. */
+.filter-scope:has(#tag-sensing:checked) .product:not([data-tags~="sensing"]),
+.filter-scope:has(#tag-controller:checked) .product:not([data-tags~="controller"]),
+.filter-scope:has(#tag-tools:checked) .product:not([data-tags~="tools"]),
+.filter-scope:has(#tag-can:checked) .product:not([data-tags~="can"]),
+.filter-scope:has(#tag-arduino:checked) .product:not([data-tags~="arduino"]),
+.filter-scope:has(#tag-rpi:checked) .product:not([data-tags~="rpi"]) {
+  display: none;
+}
+
+/* Without :has() the filter cannot work, so hide it and show every product. */
+@supports not selector(:has(*)) {
+  .filter {
+    display: none;
+  }
+}
+
+/* --- Product list ------------------------------------------------------- */
+
+/*
+ * Every product carries a top border, including the first: it doubles as the
+ * rule beneath the filter bar. Exempting the first item would break under
+ * filtering, since :first-of-type still counts hidden siblings.
+ */
+.product {
+  padding: 32px 0;
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 12px 48px;
+  align-items: start;
+}
+
+.product .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.product .tags li {
+  margin: 0;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 550;
+  color: var(--text-faint);
+}
+
+.product h2 {
+  font-size: 1.375rem;
+}
+
+.product .codename {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+}
+
+.product .summary {
+  color: var(--text-muted);
+}
+
+.product ul {
+  margin: 14px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.product li {
+  margin-bottom: 5px;
+}
+
+.product li strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 550;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  text-decoration: none;
+}
+
+/*
+ * background-origin must follow the background shorthand, which resets it.
+ * Without it the gradient is sized to the padding box but painted out to the
+ * border box, so the transparent 1px border ring gets the gradient's clamped
+ * edge colour instead of a continuation of it. That reads as a second, offset
+ * layer around the fill, worst on high DPR screens where the border snaps to a
+ * fraction of a device pixel.
+ */
+.btn-primary {
+  background: linear-gradient(135deg, var(--grad-a), var(--grad-b));
+  background-origin: border-box;
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  color: #ffffff;
+  filter: brightness(1.12);
+}
+
+/* --- Repo grid ---------------------------------------------------------- */
+
+.repos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.repo {
+  display: block;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.repo:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.repo-name {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.repo p {
+  margin-top: 5px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* --- Prose (about) ------------------------------------------------------ */
+
+.prose {
+  max-width: 68ch;
+}
+
+.prose h2 {
+  font-size: 1.25rem;
+  margin-top: 40px;
+  margin-bottom: 12px;
+}
+
+.prose p {
+  margin-bottom: 14px;
+  color: var(--text-muted);
+}
+
+.prose p strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/*
+ * Mission callout. Emphasis comes from scale, colour, and the accent edge
+ * rather than bold, echoing the products banner on the home page.
+ */
+.prose .mission {
+  position: relative;
+  margin: 26px 0;
+  padding-left: 22px;
+  color: var(--text);
+  font-size: 1.125rem;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+}
+
+.prose .mission::before {
+  content: "";
+  position: absolute;
+  inset: 3px auto 3px 0;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--grad-a), var(--grad-b));
+}
+
+.contact {
+  margin: 12px 0 0;
+}
+
+.contact div {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+
+.contact dt {
+  min-width: 90px;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+.contact dd {
+  margin: 0;
+}
+
+/* --- Footer ------------------------------------------------------------- */
+
+.site-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  margin-top: 40px;
+  padding: 28px 0;
+  font-size: 0.875rem;
+  color: var(--text-faint);
+}
+
+.site-footer .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+}
+
+.footer-links {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.footer-links a {
+  color: var(--text-muted);
+}
+
+.footer-links a:hover {
+  color: var(--text);
+}
+
+/* --- Not found ---------------------------------------------------------- */
+
+.notfound {
+  text-align: center;
+  padding: clamp(72px, 16vh, 140px) 0;
+}
+
+.notfound .code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+}
+
+.notfound h1 {
+  margin: 12px 0 14px;
+  font-size: clamp(1.75rem, 5vw, 2.25rem);
+}
+
+.notfound p {
+  color: var(--text-muted);
+  max-width: 44ch;
+  margin: 0 auto;
+}
+
+.notfound .links {
+  justify-content: center;
+}
+
+/* --- Responsive --------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .product {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  /* Let the header scroll away rather than pin a two-row bar to the top. */
+  .site-header {
+    position: static;
+  }
+
+  .site-header .container {
+    justify-content: center;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .site-nav {
+    justify-content: center;
+    gap: 0;
+  }
+
+  .site-nav a {
+    font-size: 0.875rem;
+    padding: 6px 7px;
+  }
+
+  .site-nav .ext::after {
+    margin-left: 2px;
+  }
+}
+
+/*
+ * A 3-column grid splits evenly instead, which keeps tap targets at a usable
+ * size rather than shrinking type to fit.
+ */
+@media (max-width: 480px) {
+  .site-nav {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    justify-items: center;
+    width: 100%;
+    gap: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

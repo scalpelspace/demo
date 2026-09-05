@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo</title>
+  <meta name="description"
+        content="Browser based hardware demos for ScalpelSpace boards. Plug a board into USB, and the page loads the demo for whatever it reports itself to be.">
+  <link rel="canonical" href="https://demo.scalpelspace.com/">
+  <link rel="icon" href="/assets/img/favicon-512x512.png" type="image/png">
+  <link rel="apple-touch-icon" href="/assets/img/favicon-512x512.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ScalpelSpace">
+  <meta property="og:title" content="Demo">
+  <meta property="og:description"
+        content="Browser based hardware demos for ScalpelSpace boards. Plug a board into USB, and the page loads the demo for whatever it reports itself to be.">
+  <meta property="og:url" content="https://demo.scalpelspace.com/">
+  <meta property="og:image"
+        content="https://demo.scalpelspace.com/assets/img/favicon-512x512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:site" content="@ScalpelSpace">
+  <meta name="theme-color" content="#ffffff"
+        media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0c10"
+        media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="/assets/css/site.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="https://scalpelspace.com/">
+      <img src="/assets/img/favicon-512x512.png" alt="" width="28" height="28">
+      ScalpelSpace
+    </a>
+    <!--
+      Mirrors the nav on scalpelspace.com exactly, in the same order and with
+      the same arrow markers, so the cross-domain hop to this subdomain reads
+      as a page change rather than a different site. Products and About are a
+      different origin from here but are deliberately not marked .ext: adding
+      arrows they do not have on the parent site is precisely the difference a
+      visitor would notice. Demo drops its own arrow and takes the current
+      page highlight instead.
+    -->
+    <nav class="site-nav" aria-label="Primary">
+      <a href="https://scalpelspace.com/products.html">Products</a>
+      <a href="https://scalpelspace.com/about.html">About</a>
+      <a class="ext" href="https://docs.scalpelspace.com/">Docs</a>
+      <a class="ext" href="https://blasher.scalpelspace.com/">Blasher</a>
+      <a href="/" aria-current="page">Demo</a>
+      <a class="ext" href="https://shop.scalpelspace.com/">Shop</a>
+      <a class="ext" href="https://github.com/scalpelspace">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="app">
+    <div class="page-head">
+      <h1>Demo</h1>
+      <p class="lede">
+        Live demos of ScalpelSpace hardware, running in the browser over a USB
+        serial connection. Connect a board and the page asks it what it is,
+        then loads that product's demo. Nothing is installed and no data
+        leaves the machine.
+      </p>
+    </div>
+
+    <div id="unsupported" class="banner error" hidden>
+      <strong>This browser cannot talk to serial devices.</strong>
+      The demos need the Web Serial API. Use desktop Chrome, Edge or Opera
+      over <code>https://</code> or <code>http://localhost</code>. Everything
+      below still renders so you can see what the page does, only connecting
+      to hardware is unavailable.
+    </div>
+
+    <div id="bootFailed" class="banner error" hidden>
+      <strong>The page did not start.</strong>
+      It loaded but its code did not run, which usually means this browser is
+      too old for it. Try the current version of Chrome or Edge on a desktop.
+    </div>
+
+    <noscript>
+      <div class="banner error">
+        <strong>JavaScript is switched off.</strong>
+        The demos run entirely in the browser, so nothing on this page works
+        without it.
+      </div>
+    </noscript>
+
+    <section class="card" id="cardDevice">
+      <div class="card-head">
+        <h2>Device</h2>
+        <span class="conn push-end" id="connStatus" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="connText">Not connected</span>
+        </span>
+      </div>
+      <p class="hint">
+        Plug a board into USB-C and connect. The page releases BOOT0, resets
+        the board into its application, and asks it for its firmware version.
+      </p>
+      <div class="row">
+        <button id="btnConnect" class="primary">Connect</button>
+        <button id="btnDisconnect" class="ghost" disabled>Disconnect</button>
+        <button id="btnReset" class="ghost" disabled>Reset device</button>
+        <label class="check">
+          <input type="checkbox" id="chkAnyPort">
+          Show all serial ports (not just CP2102N)
+        </label>
+      </div>
+      <dl class="facts" id="deviceFacts" hidden>
+        <div>
+          <dt>Port</dt>
+          <dd id="factPort">-</dd>
+        </div>
+        <div>
+          <dt>Product</dt>
+          <dd id="factProduct">-</dd>
+        </div>
+        <div>
+          <dt>Firmware</dt>
+          <dd id="factFirmware">-</dd>
+        </div>
+      </dl>
+    </section>
+
+    <div class="tabs" role="tablist" aria-label="View">
+      <button class="tab" id="tabDemo" role="tab" aria-controls="panelDemo"
+              aria-selected="true">Demo
+      </button>
+      <button class="tab" id="tabConsole" role="tab"
+              aria-controls="panelConsole" aria-selected="false">Console
+      </button>
+    </div>
+
+    <div class="panel" id="panelDemo" role="tabpanel" aria-labelledby="tabDemo">
+      <!-- app.js replaces this with the connected product's demo. -->
+      <div id="productPanel"></div>
+    </div>
+
+    <div class="panel" id="panelConsole" role="tabpanel"
+         aria-labelledby="tabConsole" hidden>
+      <section class="card" id="cardConsole">
+        <div class="card-head">
+          <h2>Serial console</h2>
+          <span class="conn push-end" id="portState" data-state="idle">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="portText">Port closed</span>
+          </span>
+        </div>
+        <p class="hint">
+          Every byte the board sends, including whatever the demo above is
+          asking for. Type a command to send it by hand.
+        </p>
+
+        <div class="row options">
+          <label class="check">
+            <input type="checkbox" id="monEcho" checked> Echo sent lines
+          </label>
+          <label class="check">
+            <input type="checkbox" id="monTimestamps"> Timestamps
+          </label>
+          <label class="check">
+            <input type="checkbox" id="monAutoscroll" checked> Autoscroll
+          </label>
+        </div>
+
+        <pre id="serialOut" class="log serial-out" aria-live="polite"
+             aria-label="Serial output"></pre>
+
+        <div class="row send-row">
+          <input type="text" id="monInput" class="send-input"
+                 placeholder="Type a command and press Enter" autocomplete="off"
+                 spellcheck="false" disabled>
+          <button id="btnMonSend" class="primary" disabled>Send</button>
+          <label class="check">
+            <input type="checkbox" id="monSendHex"> Send as hex
+          </label>
+        </div>
+
+        <div class="row monitor-actions">
+          <button id="btnMonClear" class="ghost">Clear output</button>
+          <span class="hint monitor-stats" id="monStats">0 B in, 0 B out</span>
+        </div>
+      </section>
+    </div>
+
+    <details class="card advanced" id="advanced">
+      <summary><h2>Connection settings</h2></summary>
+
+      <h3>Serial</h3>
+      <div class="grid">
+        <label>
+          Baud rate
+          <input type="number" id="cfgBaud" value="115200" min="1200" step="1">
+        </label>
+        <label>
+          Parity
+          <select id="cfgParity">
+            <option value="none" selected>none (8N1)</option>
+            <option value="even">even (8E1)</option>
+          </select>
+        </label>
+      </div>
+
+      <h3>Boot control lines</h3>
+      <p class="hint">
+        A ScalpelSpace board wires DTR to BOOT0 and RTS to NRESET so it can be
+        flashed hands free. That also means opening a port asserts BOOT0 and
+        starts the bootloader, which answers no commands, so the page releases
+        the lines and resets into the application on connect. Change these
+        only for a board that maps or inverts them differently.
+      </p>
+      <div class="grid">
+        <label>
+          NRESET line
+          <select id="cfgNrstLine">
+            <option value="rts" selected>RTS</option>
+            <option value="dtr">DTR</option>
+          </select>
+        </label>
+        <label class="check inline">
+          <input type="checkbox" id="cfgNrstInvert" checked>
+          Invert NRESET
+        </label>
+        <label>
+          BOOT0 line
+          <select id="cfgBoot0Line">
+            <option value="dtr" selected>DTR</option>
+            <option value="rts">RTS</option>
+          </select>
+        </label>
+        <label class="check inline">
+          <input type="checkbox" id="cfgBoot0Invert">
+          Invert BOOT0
+        </label>
+        <label>
+          Reset hold (ms)
+          <input type="number" id="cfgResetHold" value="20" min="1">
+        </label>
+        <label>
+          Boot settle (ms)
+          <input type="number" id="cfgBootDelay" value="400" min="1">
+        </label>
+      </div>
+
+      <div class="row reset-row">
+        <button id="btnResetSettings" class="ghost">Reset to defaults</button>
+        <span class="hint reset-hint">
+          Restores every field above and forgets the copy saved in this
+          browser.
+        </span>
+      </div>
+    </details>
+
+    <section class="card log-card">
+      <div class="card-head">
+        <h2>Log</h2>
+        <button id="btnClearLog" class="ghost small push-end">Clear</button>
+      </div>
+      <pre id="log" class="log" aria-live="polite"></pre>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <span>&copy; 2026 ScalpelSpace</span>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://scalpelspace.com/products.html">Products</a>
+      <a href="https://scalpelspace.com/about.html">About</a>
+      <a href="https://docs.scalpelspace.com/">Docs</a>
+      <a href="https://blasher.scalpelspace.com/">Blasher</a>
+      <a href="/">Demo</a>
+      <a href="https://shop.scalpelspace.com/">Shop</a>
+      <a href="https://github.com/scalpelspace">GitHub</a>
+    </nav>
+  </div>
+</footer>
+
+<!--
+  Deliberately a plain classic script in ES5, and deliberately not part of
+  app.js: this is the only code that still runs on an engine too old to parse
+  the modules, which is precisely when someone needs to be told why the page
+  is doing nothing. Both notices stay hidden in the markup and are revealed
+  from here, so a working browser cannot show them whatever happens to the
+  stylesheet.
+-->
+<script>
+  (function () {
+    if (!("serial" in navigator)) {
+      var unsupported = document.getElementById("unsupported");
+      if (unsupported) unsupported.hidden = false;
+    }
+
+    // app.js sets the flag once it has finished starting. If it never runs -
+    // unparseable, blocked, or a failed request - nothing else would say so.
+    setTimeout(function () {
+      var failed = document.getElementById("bootFailed");
+      if (failed && !window.__demoReady) failed.hidden = false;
+    }, 3000);
+  })();
+</script>
+<script type="module" src="/src/app.js"></script>
+</body>
+</html>
