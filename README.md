@@ -21,29 +21,6 @@ Uses the same Web Serial interface and the same site chrome as
 | [`momentum`](https://github.com/scalpelspace/momentum)     | Orientation, barometric pressure and temperature, GNSS fix, and the RGB LED.                   |
 | [`mc_stepper`](https://github.com/scalpelspace/mc_stepper) | Control state, shaft angle, setpoints, TMC2209 status and StallGuard, motion and PID settings. |
 
-`mc_stepper` has no USB port of its own: it exposes the same five-pin UART
-breakout that [`blasher`](https://github.com/scalpelspace/blasher) flashes
-through, so connect a Blasher to it and pick the Blasher's CP2102N. Its firmware
-also runs one command every 20 ms and drops anything arriving on top of a line
-it has not executed yet, so its demo queues commands and spaces them out rather
-than writing to the port directly.
-
-Polling starts on its own once a board is identified; there is nothing to switch
-on.
-
-The GNSS card is the exception, and starts closed. While it is closed the page
-never sends the `gnss` command and discards any position a streaming board sends
-unasked, so a shared screen cannot give away where the board is until someone
-opens it. Closing it again discards what was read.
-
-Opened, it shows the fix in full plus a track plot: where the board has been in
-metres relative to its first fix, drawn from the coordinates alone. There is no
-basemap and nothing is fetched, so the plot shows how far a fix wanders without
-saying where that is. It needs firmware that prints coordinates to six decimal
-places (`momentum` 0.6.0.p and later); the practical floor is the ~0.5 m spacing
-of the 32-bit float the firmware stores them in, which is visible on the plot as
-a grid once the board sits still.
-
 ## Requirements
 
 A desktop browser with
@@ -70,27 +47,6 @@ settings**.
 
 Plain static HTML, CSS and ES modules. No build step, no dependencies. GitHub
 Pages serves the repository root as-is.
-
-```
-index.html                Page chrome, device card, console and settings
-assets/css/site.css       Single stylesheet (light and dark via prefers-color-scheme)
-assets/css/site-reference.css
-                          Verbatim copy of scalpelspace.com's stylesheet, to diff against
-src/app.js                Connect flow, board identification, console wiring
-src/serial.js             Web Serial transport
-src/boot.js               BOOT0 / NRESET control over the modem lines
-src/link.js               Line broadcast and request/response over the stream
-src/lines.js              Byte stream to lines, and back
-src/version.js            The `version` reply every product answers with
-src/registry.js           Product short name -> demo module
-src/ui.js                 DOM helpers, strip chart, track plot, orientation view,
-                          dial gauge
-src/products/momentum.js  Momentum demo
-src/products/mc_stepper.js
-                          Stepper controller demo
-dev/                      Development only, not published: static server and a
-                          harness that mounts a demo against a fake device
-```
 
 ### Adding a product
 
