@@ -12,9 +12,17 @@ Uses the same Web Serial interface and the same site chrome as
 
 ## Supported products
 
-| Product                                                | Demo                                                                         |
-|--------------------------------------------------------|------------------------------------------------------------------------------|
-| [`momentum`](https://github.com/scalpelspace/momentum) | Orientation, barometric pressure and temperature, GNSS fix, and the RGB LED. |
+| Product                                                    | Demo                                                                                           |
+|------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| [`momentum`](https://github.com/scalpelspace/momentum)     | Orientation, barometric pressure and temperature, GNSS fix, and the RGB LED.                   |
+| [`mc_stepper`](https://github.com/scalpelspace/mc_stepper) | Control state, shaft angle, setpoints, TMC2209 status and StallGuard, motion and PID settings. |
+
+`mc_stepper` has no USB port of its own: it exposes the same five-pin UART
+breakout that [`blasher`](https://github.com/scalpelspace/blasher) flashes
+through, so connect a Blasher to it and pick the Blasher's CP2102N. Its firmware
+also runs one command every 20 ms and drops anything arriving on top of a line
+it has not executed yet, so its demo queues commands and spaces them out rather
+than writing to the port directly.
 
 Polling starts on its own once a board is identified; there is nothing to switch
 on.
@@ -71,8 +79,11 @@ src/link.js               Line broadcast and request/response over the stream
 src/lines.js              Byte stream to lines, and back
 src/version.js            The `version` reply every product answers with
 src/registry.js           Product short name -> demo module
-src/ui.js                 DOM helpers, strip chart, track plot, orientation view
+src/ui.js                 DOM helpers, strip chart, track plot, orientation view,
+                          dial gauge
 src/products/momentum.js  Momentum demo
+src/products/mc_stepper.js
+                          Stepper controller demo
 dev/                      Development only, not published: static server and a
                           harness that mounts a demo against a fake device
 ```
@@ -115,12 +126,14 @@ visible again, since a canvas laid out inside a hidden panel measures zero.
 **3. Add it to `PRODUCTS`** in [`src/registry.js`](src/registry.js).
 
 Reusable pieces live in [`src/ui.js`](src/ui.js): `h()` for markup, `facts()`
-for readout rows, `StripChart`, `TrackPlot` and `OrientationView`. Styling is
-shared too - a demo that uses `.demo-grid`, `.card` and `.facts` needs no new
-CSS.
+for readout rows, and `StripChart`, `TrackPlot`, `DialGauge` and
+`OrientationView` for canvases. Styling is shared too - a demo built from
+`.demo-grid`, `.card` and `.facts` needs no new CSS.
 
-Test it without hardware by teaching `dev/harness.html` to answer the new
-product's commands.
+Test it without hardware by adding a fake device to `dev/harness.html`, which
+mounts any registered product against one and takes `?product=<id>`. Model how
+the firmware refuses things, not just how it succeeds - both existing fakes do,
+and it is what caught the queueing bug in the stepper demo.
 
 ## Local Preview
 

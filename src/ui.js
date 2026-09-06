@@ -250,6 +250,144 @@ export class StripChart {
   }
 }
 
+/* ------------------------------------------------------------ dial gauge - */
+
+/**
+ * A shaft angle, with its setpoint and the error between them.
+ *
+ * Zero is at twelve o'clock and positive angles run counter-clockwise, which
+ * is the right-hand rule about an axis pointing out of the screen - the shaft
+ * seen from the front. Which way the motor actually turns for a positive
+ * setpoint is a wiring question the page cannot know; what the dial is for is
+ * seeing the measurement chase the target, and the arc between them is the
+ * error the loop is working on.
+ */
+export class DialGauge {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.measured = null;
+    this.setpoint = null;
+    this.stale = true;
+    this._dirty = true;
+  }
+
+  set({measured, setpoint}) {
+    this.measured = measured;
+    this.setpoint = setpoint;
+    this._dirty = true;
+  }
+
+  setStale(stale) {
+    if (this.stale !== stale) this._dirty = true;
+    this.stale = stale;
+  }
+
+  draw({force = false} = {}) {
+    if (!this._dirty && !force) return;
+    const fit = fitCanvas(this.canvas);
+    if (!fit) return;
+    this._dirty = false;
+    const {ctx, width, height} = fit;
+    ctx.clearRect(0, 0, width, height);
+
+    const cx = width / 2;
+    const cy = height / 2;
+    const radius = Math.min(width, height) / 2 - 16;
+    if (radius < 20) return;
+
+    const border = cssVar("--border", "#e4e4e9");
+    const faint = cssVar("--text-faint", "#85858f");
+    const accent = this.stale ? faint : cssVar("--accent", "#7a00d4");
+    const text = cssVar("--text", "#16161a");
+
+    // Canvas angles run clockwise from three o'clock; this dial runs
+    // counter-clockwise from twelve.
+    const screenAngle = (radians) => -Math.PI / 2 - radians;
+    const point = (radians, r) => [cx + r * Math.cos(screenAngle(radians)), cy + r * Math.sin(screenAngle(radians))];
+
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // A tick every 30 degrees, longer on the quarters.
+    for (let step = 0; step < 12; step++) {
+      const radians = (step * Math.PI) / 6;
+      const long = step % 3 === 0;
+      const [x1, y1] = point(radians, radius - (long ? 10 : 5));
+      const [x2, y2] = point(radians, radius);
+      ctx.strokeStyle = long ? faint : border;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = faint;
+    ctx.font = `11px ${cssVar("--font-mono", "monospace")}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("0", cx, cy - radius + 18);
+
+    const hasMeasured = Number.isFinite(this.measured);
+    const hasSetpoint = Number.isFinite(this.setpoint);
+
+    /*
+     * The error arc runs the short way round. A loop chasing a target 10
+     * degrees away and one chasing it 350 degrees the other way look the same
+     * on a dial, and the short way is the one the reader means.
+     */
+    if (hasMeasured && hasSetpoint) {
+      let error = this.setpoint - this.measured;
+      error = Math.atan2(Math.sin(error), Math.cos(error));
+      if (Math.abs(error) > 0.01) {
+        ctx.strokeStyle = cssVar("--warn", "#8a5a00");
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 0.66, screenAngle(this.measured), screenAngle(this.measured + error), error > 0);
+        ctx.stroke();
+      }
+    }
+
+    if (hasSetpoint) {
+      const [x, y] = point(this.setpoint, radius - 6);
+      ctx.strokeStyle = faint;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (hasMeasured) {
+      const [x, y] = point(this.measured, radius - 6);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    }
+
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (hasMeasured) {
+      const degrees = ((this.measured * 180) / Math.PI) % 360;
+      ctx.fillStyle = text;
+      ctx.font = `600 15px ${cssVar("--font-mono", "monospace")}`;
+      ctx.fillText(`${degrees.toFixed(1)}°`, cx, cy + radius * 0.42);
+    }
+  }
+}
+
 /* ------------------------------------------------------------ track plot - */
 
 /**

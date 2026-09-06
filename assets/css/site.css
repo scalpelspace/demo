@@ -802,7 +802,8 @@ input[type="number"] {
 /* --- Orientation and charts --------------------------------------------- */
 
 .attitude,
-.track {
+.track,
+.dial {
   display: flex;
   justify-content: center;
   background: var(--bg);
@@ -817,7 +818,8 @@ input[type="number"] {
  * aspect-ratio keeps that true as the column width changes.
  */
 .attitude-canvas,
-.track-canvas {
+.track-canvas,
+.dial-canvas {
   display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -827,8 +829,89 @@ input[type="number"] {
   max-width: 320px;
 }
 
-.track-canvas {
+.track-canvas,
+.dial-canvas {
   max-width: 300px;
+}
+
+/* --- Status flags ------------------------------------------------------- */
+
+/*
+ * A fixed set of chips, all present whether the bit is set or not. Showing
+ * only the raised ones would make an empty row mean both "nothing wrong" and
+ * "never read", and would move every remaining chip each time one changed.
+ */
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flag {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.flag.set {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* GSTAT.reset is a power-up notice, not a fault; it should not read as one. */
+.flag.notice {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* --- Setpoint rows ------------------------------------------------------ */
+
+.setpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.setpoint-name {
+  flex: 0 0 auto;
+  min-width: 34px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.command-input {
+  flex: 1 1 80px;
+  min-width: 0;
+}
+
+.setpoint-unit {
+  flex: 0 0 auto;
+  min-width: 46px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* --- Configuration groups ----------------------------------------------- */
+
+.config-group + .config-group {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.config-group .chart-label {
+  margin-top: 0;
+}
+
+.config-group .hint {
+  font-size: 0.875rem;
 }
 
 .chart {

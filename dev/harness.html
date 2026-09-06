@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo harness</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/assets/css/site.css">
+</head>
+<!--
+  Development only. Not part of the published site: the Pages workflow copies
+  index.html, src/ and assets/, and nothing from dev/.
+
+  Mounts a product demo against a fake device so the panels, charts and canvas
+  widgets can be worked on without hardware on the desk. Each fake answers the
+  same lines its firmware prints - including the ways that firmware refuses -
+  so anything that works here works the same way against a real board.
+
+  Serve the repository root and open /dev/harness.html, optionally with
+  ?product=mc_stepper.
+-->
+<body>
+<main id="main">
+  <div class="app">
+    <div class="page-head">
+      <h1>Demo harness</h1>
+      <p class="lede">
+        Synthetic data. Nothing here is connected to anything; this page exists
+        to lay out and exercise the demo panels.
+      </p>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Fake device</h2>
+        <span class="card-source push-end" id="deviceName">-</span>
+      </div>
+      <div class="row">
+        <label class="check">
+          Product
+          <select id="product"></select>
+        </label>
+        <span id="deviceControls" class="row"></span>
+        <label class="check">
+          <input type="checkbox" id="quiet"> Go quiet
+        </label>
+      </div>
+      <pre id="log" class="log" style="margin-top:16px;max-height:140px"></pre>
+    </section>
+
+    <div id="productPanel"></div>
+  </div>
+</main>
+
+<script type="module">
+  import {momentum} from "/src/products/momentum.js";
+  import {mcStepper} from "/src/products/mc_stepper.js";
+
+  const logEl = document.getElementById("log");
+  const log = (message, level = "info") => {
+    const line = document.createElement("span");
+    line.className = `line ${level}`;
+    line.textContent = `${message}\n`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  /** Stands in for DeviceLink: collects handlers, hands commands to a device. */
+  const handlers = new Set();
+  const link = {
+    onLine(handler) {
+      handlers.add(handler);
+      return () => handlers.delete(handler);
+    }, async send(text) {
+      log(`> ${text}`);
+      device.receive(text.trim());
+    },
+  };
+  const emit = (line) => handlers.forEach((handler) => handler(line));
+
+  const f = (value, digits = 3) => Number(value).toFixed(digits);
+  let t = 0;
+
+  /* ------------------------------------------------------------ momentum - */
+
+  /*
+   * Somewhere in Ottawa, wandering a few metres the way a stationary receiver
+   * does. Math.fround squeezes each coordinate through a 32-bit float first,
+   * because that is how the firmware stores it: at this latitude the float
+   * grid is about half a metre, which is coarser than the `%.6f` it prints
+   * and is visible on the track plot.
+   */
+  const HOME = {lat: 45.421538, lon: -75.697193};
+  const M_PER_DEG = {lat: 111132, lon: 78000};
+
+  const momentumDevice = {
+    product: momentum,
+    label: "momentum 0.6.0.p",
+    streaming: false,
+    controls: [["Answer polls (stock firmware)", (d) => (d.streaming = false)], ["Stream telemetry (full build)", (d) => (d.streaming = true)],],
+
+    fix() {
+      const noise = () => (Math.random() - 0.5) * 3;
+      const north = 4 * Math.sin(t * 0.05) + noise();
+      const east = 4 * Math.cos(t * 0.037) + noise();
+      return {
+        lat: Math.fround(HOME.lat + north / M_PER_DEG.lat),
+        lon: Math.fround(HOME.lon + east / M_PER_DEG.lon),
+      };
+    },
+
+    quaternion() {
+      // Rotation about a tilted axis, so all three body axes move.
+      const angle = t * 0.6;
+      const axis = [0.3, 0.5, 0.81];
+      const s = Math.sin(angle / 2);
+      return {
+        i: axis[0] * s,
+        j: axis[1] * s,
+        k: axis[2] * s,
+        r: Math.cos(angle / 2)
+      };
+    },
+
+    pressure() {
+      return 101325 + 60 * Math.sin(t * 0.11) + 12 * Math.sin(t * 0.7);
+    },
+
+    temperature() {
+      return 23.5 + 0.4 * Math.sin(t * 0.05);
+    },
+
+    command(text) {
+      const q = this.quaternion();
+      if (text === "version" || text === "ver") emit("momentum 0.6.0.p");
+      if (text === "uid") emit("41293 8172 55031");
+      if (text === "imu" || text === "report") {
+        emit(`${f(q.i)} i,${f(q.j)} j,${f(q.k)} k, ${f(q.r)} r`);
+      }
+      if (text === "baro" || text === "report") {
+        emit(`${f(this.temperature())} degC,${f(this.pressure())} Pa`);
+      }
+      if (text === "gnss" || text === "report") {
+        const {lat, lon} = this.fix();
+        emit("2026/9/5 14:32:9");
+        // `report` still prints 3 decimal places in firmware 0.6.0.p; only
+        // the `gnss` command was moved to 6.
+        const digits = text === "gnss" ? 6 : 3;
+        emit(`${f(lat, digits)} (N),${f(lon, digits)} (W), ${f(74.2)} m`);
+      }
+      if (text.startsWith("rgb")) log(`  LED -> ${text.slice(4)}`, "ok");
+    },
+
+    ticks: 0,
+    tick() {
+      if (!this.streaming) return;
+      const q = this.quaternion();
+      emit(`qi=${f(q.i)},qj=${f(q.j)},qk=${f(q.k)},qr=${f(q.r)}`);
+      emit(`gx=${f(0.4 * Math.sin(t * 3))},gy=${f(0.3 * Math.cos(t * 2.2))},gz=${f(0.2 * Math.sin(t))}`);
+      emit(`ax=${f(9.81 * Math.sin(t * 0.5))},ay=${f(2 * Math.cos(t * 0.8))},az=${f(9.81 * Math.cos(t * 0.5))}`);
+      emit(`mx=${f(21 + 4 * Math.sin(t))},my=${f(-9 + 3 * Math.cos(t))},mz=${f(43 + 2 * Math.sin(t * 0.4))}`);
+      emit(`pres=${f(this.pressure())},temp=${f(this.temperature())},s=0`);
+
+      // The GNSS module reports once a second, so these lines go out at a
+      // twentieth of the rest. Sending them every tick would fill the track
+      // plot's whole history in under a minute.
+      if (this.ticks++ % 20) return;
+      emit(`sp=${f(0.4)},cdeg=${f(112.5)},pf=7,sat=11,hdop=${f(0.98)}`);
+      const {lat, lon} = this.fix();
+      emit(`lat=${f(lat, 6)},lon=${f(lon, 6)}`);
+      emit(`alt=${f(74.2)},gid=${f(-33.1)},s=0`);
+    },
+  };
+
+  /* ---------------------------------------------------------- mc_stepper - */
+
+  /*
+   * A motor that actually moves: the position slews towards the setpoint at
+   * the configured velocity limit, so the dial, the error arc and the chart
+   * all have something real to show. The state machine and the refusals are
+   * modelled more carefully than the physics, because those are what the
+   * page has to get right.
+   */
+  const stepperDevice = {
+    product: mcStepper,
+    label: "mc_stepper 0.3.1.p",
+    state: "disable",
+    mode: "none",
+    position: 0,
+    positionSetpoint: 0,
+    velocity: 0,
+    velocitySetpoint: 0,
+    status: 0x0001, // GSTAT.reset, as a real board reads after power-up.
+    config: {
+      microsteps: 16,
+      maxAccel: 300,
+      maxVelocity: 5,
+      runCurrentMa: 300,
+      irun: 8,
+      ihold: 1,
+      iholdDelay: 1,
+      kp: 50,
+      ki: 3,
+      kd: 17,
+      stallguard: 0,
+      sgthrs: 100,
+    },
+    controls: [["Latch a fault", (d) => {
+      d.state = "fault";
+      d.velocitySetpoint = 0;
+    }], ["Raise s2ga", (d) => (d.status |= 1 << 5)], ["Clear status", (d) => (d.status = 0)],],
+
+    live() {
+      return this.state !== "disable" && this.state !== "fault";
+    },
+
+    command(text) {
+      const [word, ...rest] = text.split(/\s+/);
+      const args = rest.join(" ");
+
+      const motion = (mode, value) => {
+        if (this.state === "disable") {
+          emit("Error: driver disabled, run `en` first");
+          return;
+        }
+        if (this.state === "fault") {
+          emit("Error: faulted, run `clr` first");
+          return;
+        }
+        this.mode = mode;
+        if (mode === "spd") {
+          this.velocitySetpoint = value;
+        } else if (mode === "rel") {
+          this.positionSetpoint = this.position + value;
+          this.velocitySetpoint = 0;
+        } else {
+          this.positionSetpoint = value;
+          this.velocitySetpoint = 0;
+        }
+        this.state = "executing";
+        emit(`${mode} ${f(value, 4)}`);
+      };
+
+      const gated = (apply) => {
+        if (this.state !== "disable") {
+          emit("Error: disable the driver first, run `dis`");
+          return false;
+        }
+        apply();
+        return true;
+      };
+
+      switch (word) {
+        case "help":
+        case "?":
+          emit("Motion:");
+          emit("  pos <rad>       Absolute closed-loop position");
+          emit("  stop            Command zero speed, loop stays live");
+          emit("Status:");
+          emit("  stat            Control loop and driver status");
+          return;
+        case "version":
+        case "ver":
+          emit("mc_stepper 0.3.1.p");
+          return;
+        case "uid":
+          emit("58120 4471 39902");
+          return;
+        case "stat":
+          emit(`state ${this.state}`);
+          emit(`mode ${this.mode}`);
+          emit(`pos ${f(this.position, 4)} rad`);
+          emit(`pos_sp ${f(this.positionSetpoint, 4)} rad`);
+          emit(`pos_err ${f(this.positionSetpoint - this.position, 4)} rad`);
+          emit(`vel_sp ${f(this.velocity, 4)} rad/s`);
+          emit(`step_rate ${f((this.velocity * this.config.microsteps * 200) / (2 * Math.PI), 1)} steps/s`);
+          emit(`drv_status 0x${this.status.toString(16).padStart(4, "0").toUpperCase()}`);
+          return;
+        case "pos":
+        case "rel":
+        case "spd":
+        case "ol":
+          motion(word, Number(args));
+          return;
+        case "stop":
+          motion("spd", 0);
+          return;
+        case "zero":
+          this.position = 0;
+          this.positionSetpoint = 0;
+          emit("zero requested, applied at standstill");
+          return;
+        case "en":
+          if (this.state === "disable") this.state = "idle";
+          emit(`state ${this.state}`);
+          return;
+        case "dis":
+          this.state = "disable";
+          emit(`state ${this.state}`);
+          return;
+        case "clr":
+          if (this.state === "fault") this.state = "idle";
+          emit(`state ${this.state}`);
+          return;
+        case "motion": {
+          const parts = args.split(/\s+/).filter(Boolean).map(Number);
+          if (parts.length === 3 && !gated(() => {
+            [this.config.microsteps, this.config.maxAccel, this.config.maxVelocity] = parts;
+          })) return;
+          emit(`microsteps ${this.config.microsteps}`);
+          emit(`max_accel ${f(this.config.maxAccel)} rad/s^2`);
+          emit(`max_vel ${f(this.config.maxVelocity)} rad/s`);
+          return;
+        }
+        case "cur": {
+          const parts = args.split(/\s+/).filter(Boolean).map(Number);
+          if (parts.length === 4 && !gated(() => {
+            [this.config.runCurrentMa, this.config.irun, this.config.ihold, this.config.iholdDelay] = parts;
+          })) return;
+          emit(`run_current ${this.config.runCurrentMa} mA`);
+          emit(`irun ${this.config.irun}`);
+          emit(`ihold ${this.config.ihold}`);
+          emit(`iholddelay ${this.config.iholdDelay}`);
+          return;
+        }
+        case "gains": {
+          const parts = args.split(/\s+/).filter(Boolean).map(Number);
+          if (parts.length === 3) [this.config.kp, this.config.ki, this.config.kd] = parts;
+          emit(`kp ${f(this.config.kp, 4)}`);
+          emit(`ki ${f(this.config.ki, 4)}`);
+          emit(`kd ${f(this.config.kd, 4)}`);
+          return;
+        }
+        case "sg": {
+          const parts = args.split(/\s+/).filter(Boolean).map(Number);
+          if (parts.length === 2) [this.config.stallguard, this.config.sgthrs] = parts;
+          emit(`stallguard ${this.config.stallguard}`);
+          emit(`sgthrs ${this.config.sgthrs}`);
+          emit(`sg_result ${Math.round(180 + 60 * Math.sin(t * 0.4) - Math.abs(this.velocity) * 12)}`);
+          emit(`stalled 0`);
+          return;
+        }
+        case "rgb":
+          log(`  LED -> ${args}`, "ok");
+          return;
+        default:
+          emit("Error: unknown command, run `help`");
+      }
+    },
+
+    tick(dt) {
+      if (!this.live()) {
+        this.velocity = 0;
+        return;
+      }
+      const limit = this.config.maxVelocity;
+      let target = this.velocitySetpoint;
+      if (this.mode !== "spd") {
+        const error = this.positionSetpoint - this.position;
+        target = Math.max(-limit, Math.min(limit, error * 4));
+        if (Math.abs(error) < 0.002 && this.state === "executing") {
+          this.state = "on_target";
+        }
+      }
+      // One-pole approach to the commanded velocity, standing in for the
+      // slew limiter.
+      this.velocity += (target - this.velocity) * Math.min(1, dt * 8);
+      this.position += this.velocity * dt;
+    },
+  };
+
+  /* ---------------------------------------------------------- harness ---- */
+
+  const DEVICES = {momentum: momentumDevice, mc_stepper: stepperDevice};
+
+  const params = new URLSearchParams(location.search);
+  const key = DEVICES[params.get("product")] ? params.get("product") : "momentum";
+  const device = DEVICES[key];
+  const quiet = document.getElementById("quiet");
+
+  /*
+   * Both firmwares hand a line to their own code and only then answer, so the
+   * fake answers on a timer rather than inline. mc_stepper additionally holds
+   * one pending line and drops anything landing on top of it - which is
+   * exactly the constraint its demo's command queue exists to respect, so the
+   * harness models it rather than being politely forgiving.
+   */
+  const RUN_PERIOD_MS = 20;
+  let pending = null;
+  let dropped = false;
+
+  device.receive = function (text) {
+    if (key !== "mc_stepper") {
+      if (!quiet.checked) this.command(text);
+      return;
+    }
+    if (pending !== null) {
+      dropped = true;
+      return;
+    }
+    pending = text;
+  };
+
+  setInterval(() => {
+    if (key !== "mc_stepper" || quiet.checked) return;
+    if (dropped) {
+      dropped = false;
+      emit("Error: command dropped, previous line still executing");
+      log("  DROPPED a command", "error");
+    }
+    if (pending !== null) {
+      const text = pending;
+      pending = null;
+      device.command(text);
+    }
+  }, RUN_PERIOD_MS);
+
+  const select = document.getElementById("product");
+  for (const name of Object.keys(DEVICES)) {
+    select.append(new Option(name, name, false, name === key));
+  }
+  select.addEventListener("change", () => {
+    location.search = `?product=${select.value}`;
+  });
+  document.getElementById("deviceName").textContent = device.label;
+
+  const controlsHost = document.getElementById("deviceControls");
+  for (const [label, action] of device.controls || []) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      action(device);
+      log(`  ${label}`, "warn");
+    });
+    controlsHost.append(button);
+  }
+
+  const demo = device.product.create(link, {
+    log,
+    version: device.label.split(" ")[1]
+  });
+  document.getElementById("productPanel").append(demo.el);
+
+  // Development convenience: poke at the panel from the console, for example
+  // `demo.dial.set({measured: 1, setpoint: 2}); demo.reflow()`.
+  window.demo = demo;
+  window.device = device;
+  window.emit = emit;
+
+  const TICK_MS = 50;
+  setInterval(() => {
+    t += TICK_MS / 1000;
+    if (quiet.checked) return;
+    device.tick(TICK_MS / 1000);
+  }, TICK_MS);
+</script>
+</body>
+</html>

@@ -9,8 +9,9 @@
  */
 
 import {momentum} from "./products/momentum.js";
+import {mcStepper} from "./products/mc_stepper.js";
 
-export const PRODUCTS = [momentum];
+export const PRODUCTS = [momentum, mcStepper];
 
 /** @param {string} name the short name reported by `version` */
 export function findProduct(name) {
