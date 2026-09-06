@@ -293,7 +293,9 @@ const LIVE_STATES = new Set(["idle", "start", "executing", "on_target"]);
 class StepperDemo {
   /**
    * @param {import("../link.js").DeviceLink} link
-   * @param {{log: (msg: string, level?: string) => void, version: string}} ctx
+   * @param {{log: (msg: string, level?: string) => void, version: string,
+   *          preview?: boolean}} ctx `preview` mounts the panel with no device
+   *          behind it, so nothing is asked of the link.
    */
   constructor(link, ctx) {
     this.link = link;
@@ -336,12 +338,14 @@ class StepperDemo {
      * a poll sooner than the first `stat` would, and it leaves the board in
      * the state that `motion` and `cur` writes require.
      */
-    this.queue.push("dis");
+    if (!ctx.preview) {
+      this.queue.push("dis");
 
-    // The configuration is static until something writes it, so it is read
-    // once here and refreshed only when a write echoes back.
-    for (const command of CONFIG_COMMANDS) this.queue.push(command);
-    this.startPolling();
+      // The configuration is static until something writes it, so it is read
+      // once here and refreshed only when a write echoes back.
+      for (const command of CONFIG_COMMANDS) this.queue.push(command);
+      this.startPolling();
+    }
   }
 
   /* -------------------------------------------------------------- markup - */
@@ -452,9 +456,9 @@ class StepperDemo {
      * live against a moving loop.
      */
     grid.append(this.card({
-      title: "Setpoint and tuning",
+      title: "Status",
       id: "cardSetpoint",
-      source: "motion and control loop",
+      source: "",
       body: [h("div.config-group", null, [["pos", "Absolute position", "rad", "absolute"], ["rel", "Relative position", "rad", "offset"], ["spd", "Speed", "rad/s", "speed"], ["ol", "Open-loop position", "rad", "absolute"],].map(setpointRow)), //
         group("Position PID", "Applied live, without resetting the integrator - a large jump lands " + "as a step input on a moving loop.", [field("kp", "Kp", {step: "0.1"}), field("ki", "Ki", {step: "0.1"}), field("kd", "Kd", {step: "0.1"}),], "gains", () => [this.configInputs.kp.value, this.configInputs.ki.value, this.configInputs.kd.value,]),],
     }));
@@ -490,7 +494,7 @@ class StepperDemo {
     grid.append(this.card({
       title: "Configuration",
       id: "cardConfig",
-      source: "controls and TMC2209",
+      source: "TMC2209",
       body: [group("Motion envelope", "The firmware refuses these while the driver is enabled: changing " + "the microstep resolution mid-move would glitch the step stream. " + "Disable first.", [field("microsteps", "Microsteps", {
         min: 1, max: 256, step: 1
       }), field("maxAccel", "Accel (rad/s²)", {
@@ -776,13 +780,6 @@ export const mcStepper = {
   id: "mc_stepper",
   name: "Stepper motor controller",
   summary: "Closed-loop stepper control: a TMC2209 driver and an AS5047P encoder, over a UART breakout.",
-  links: [{
-    label: "Firmware", href: "https://github.com/scalpelspace/mc_stepper"
-  }, {
-    label: "Hardware", href: "https://github.com/scalpelspace/mc_stepper_pcb"
-  }, {
-    label: "Driver", href: "https://github.com/scalpelspace/mc_stepper_driver"
-  },],
   matches: (name) => name === "mc_stepper",
   create: (link, ctx) => new StepperDemo(link, ctx),
 };

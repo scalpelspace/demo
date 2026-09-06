@@ -384,7 +384,13 @@ main {
 
 /* --- Serial console ----------------------------------------------------- */
 
-.serial-out {
+/*
+ * `.log.serial-out`, not `.serial-out`: the element carries both classes, and
+ * the generic `.log` further down sets `margin: 0`. At equal specificity the
+ * later rule wins, so a plain `.serial-out` here loses its margin and the send
+ * row ends up flush against the bottom of the output.
+ */
+.log.serial-out {
   height: clamp(220px, 42vh, 460px);
   max-height: none;
   margin-bottom: 14px;
@@ -442,28 +448,10 @@ main {
   margin-left: auto;
 }
 
-margin:
-
-0
-0
-14
-px
-
-;
-color:
-var
-
-(
---text-muted
-
-)
-;
-font-size:
-
-0.9375
-rem
-
-;
+.hint {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
 }
 
 .row {
@@ -791,6 +779,15 @@ input[type="number"] {
   margin-bottom: 16px;
 }
 
+/* Sits above a demo panel mounted with no device behind it. */
+.preview-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+
 .mono {
   font-family: var(--font-mono);
 }
@@ -918,9 +915,19 @@ input[type="number"] {
   display: block;
   width: 100%;
   height: 120px;
+  margin-top: 14px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+/*
+ * A chart usually follows its own label, which already carries the spacing and
+ * wants to sit close to what it names. The margin above is for the charts that
+ * do not - StallGuard's, which comes straight off a readout list.
+ */
+.chart-label + .chart {
+  margin-top: 0;
 }
 
 .chart-short {

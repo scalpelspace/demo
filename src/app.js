@@ -266,15 +266,59 @@ function clearConsole() {
 
 /** What the Demo tab shows with nothing connected: what this page supports. */
 function showPlaceholder() {
-  const tile = (product) => h("div.repo", null, h("span.repo-name", null, product.id), h("p", null, product.summary), h("div.links", null, product.links.map(({
-                                                                                                                                                                label,
-                                                                                                                                                                href
-                                                                                                                                                              }) => h("a.btn", {href}, label))));
+  const tile = (product) => h("div.repo", null, //
+    h("span.repo-name", null, product.id), //
+    h("p", null, product.summary), //
+    h("div.links", null, h("button", {
+      type: "button", onclick: () => previewProduct(product),
+    }, "Preview demo")));
 
   els.productPanel.replaceChildren(h("section.card", null, //
     h("div.card-head", null, h("h2", null, "No board connected")), //
-    h("p.hint", null, "Connect a board to load its demo. The page identifies it by the name " + "its own firmware reports, so there is nothing to choose here."), //
+    h("p.hint", null, "Connect a board to load its demo - the page identifies it by the name " + "its own firmware reports, so there is nothing to choose. Until then " + "you can open a demo empty, to see what a board would fill in."), //
     h("div.repos", null, PRODUCTS.map(tile))));
+}
+
+/**
+ * Mount a demo with nothing behind it.
+ *
+ * The panel is the real one, built by the real product module, so what is on
+ * screen is what a board would fill in rather than a picture of it. What it is
+ * given is a link that goes nowhere: sends are swallowed and no line ever
+ * arrives, so every reading stays empty and every button is inert.
+ *
+ * Modules are told this through `ctx.preview` so they can skip the commands
+ * they would otherwise fire on mount. Without it a preview would sit there
+ * politely asking a link that does not exist, four times a second, forever.
+ */
+function previewProduct(product) {
+  unmountProduct();
+  state.demo = product.create(offlineLink(), {
+    log, version: "-", preview: true
+  });
+
+  els.productPanel.replaceChildren(h("div.banner.note.preview-banner", null, //
+    h("span", null, h("strong", null, "Preview. "), "Nothing is connected, so the readings stay empty and the controls do " + "nothing. Connect a board to use it for real."), //
+    h("button.small", {
+      type: "button", onclick: () => {
+        unmountProduct();
+        showPlaceholder();
+      },
+    }, "Back to products")), state.demo.el);
+
+  if (state.tab === "demo" && state.demo.reflow) state.demo.reflow();
+  log(`Previewing the ${product.name} demo; nothing is connected`);
+}
+
+/** A DeviceLink-shaped object that is not connected to anything. */
+function offlineLink() {
+  return {
+    onLine: () => () => {
+    }, onSent: () => () => {
+    }, send: async () => {
+    }, writeBytes: async () => {
+    }, ask: () => Promise.reject(new Error("Not connected")),
+  };
 }
 
 /**

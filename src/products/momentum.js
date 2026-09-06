@@ -186,7 +186,9 @@ const LED_PRESETS = [["Off", [0, 0, 0]], ["White", [255, 255, 255]], ["Red", [25
 class MomentumDemo {
   /**
    * @param {import("../link.js").DeviceLink} link
-   * @param {{log: (msg: string, level?: string) => void, version: string}} ctx
+   * @param {{log: (msg: string, level?: string) => void, version: string,
+   *          preview?: boolean}} ctx `preview` mounts the panel with no device
+   *          behind it, so nothing is asked of the link.
    */
   constructor(link, ctx) {
     this.link = link;
@@ -226,8 +228,8 @@ class MomentumDemo {
     this._unthemed = onThemeChange(() => this.reflow());
 
     // Nothing to switch on: the panel exists because a board answered, so it
-    // starts asking straight away.
-    this.startPolling();
+    // starts asking straight away. A preview has nothing to ask.
+    if (!ctx.preview) this.startPolling();
   }
 
   /* -------------------------------------------------------------- markup - */
@@ -780,11 +782,6 @@ export const momentum = {
   id: "momentum",
   name: "Momentum",
   summary: "9-DOF IMU, barometric pressure and multi-constellation GNSS on a Uno-footprint shield.",
-  links: [{label: "Docs", href: "https://docs.scalpelspace.com/products/"}, {
-    label: "Firmware", href: "https://github.com/scalpelspace/momentum"
-  }, {
-    label: "Hardware", href: "https://github.com/scalpelspace/momentum_pcb"
-  },],
   /** The name the `version` command prints, lower-cased. */
   matches: (name) => name === "momentum",
   create: (link, ctx) => new MomentumDemo(link, ctx),

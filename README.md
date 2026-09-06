@@ -7,6 +7,10 @@ Plug a board into USB-C, press Connect, and the page asks it `version`. The
 board answers with the short name compiled into its own firmware, and that name
 selects the demo. Nothing is installed, and no data leaves the machine.
 
+With nothing connected, each supported product has a **Preview demo** button
+that opens its panel empty - the real panel, built by the real module, just with
+no device behind it.
+
 Uses the same Web Serial interface and the same site chrome as
 [`blasher`](https://github.com/scalpelspace/blasher).
 
@@ -99,8 +103,7 @@ needs to know the product exists.
 export const widget = {
   id: "widget",                       // short name, as the firmware reports it
   name: "Widget",                     // shown in the log
-  summary: "One sentence for the disconnected page.",
-  links: [{label: "Firmware", href: "https://github.com/scalpelspace/widget"}],
+  summary: "One sentence for the tile on the disconnected page.",
   matches: (shortName) => shortName === "widget",
   create: (link, ctx) => new WidgetDemo(link, ctx),
 };
@@ -109,8 +112,9 @@ export const widget = {
 `matches` receives the lower-cased name from the `version` reply, so one module
 can claim several names (a `widget` and a `widget_pro`, say).
 
-**2. `create(link, ctx)` returns the demo.** `ctx` is `{log, version}`; `link`
-is the [`DeviceLink`](src/link.js) for the open port:
+**2. `create(link, ctx)` returns the demo.** `ctx` is
+`{log, version, preview}`; `link` is the [`DeviceLink`](src/link.js) for the
+open port:
 
 |                               |                                                            |
 |-------------------------------|------------------------------------------------------------|
@@ -122,6 +126,11 @@ The returned object needs `el` (the panel element) and `destroy()` (drop timers
 and unsubscribe - it is called on disconnect and on Reset device). Add
 `reflow()` if it draws to a canvas, so it can redraw after the Demo tab becomes
 visible again, since a canvas laid out inside a hidden panel measures zero.
+
+`ctx.preview` is set when the panel is mounted from a **Preview demo** button on
+the disconnected page. There is no device behind the link, so honour it by
+skipping whatever the module would otherwise send on mount - the panel then
+renders empty, which is the point.
 
 **3. Add it to `PRODUCTS`** in [`src/registry.js`](src/registry.js).
 
