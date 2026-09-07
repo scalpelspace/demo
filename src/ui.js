@@ -59,6 +59,16 @@ export function facts(entries) {
   return {el: list, values};
 }
 
+/**
+ * Colour a readout by what it means rather than by what it says. `tone` is one
+ * of the names site.css defines under `[data-tone]`; anything falsy clears it
+ * back to the ordinary text colour, which is what "nothing to report" should
+ * look like.
+ */
+export function setTone(el, tone) {
+  if (tone) el.dataset.tone = tone; else delete el.dataset.tone;
+}
+
 /** Fixed-point text for a possibly-missing number. */
 export function num(value, digits = 2, suffix = "") {
   if (value === null || value === undefined || Number.isNaN(value)) return "-";

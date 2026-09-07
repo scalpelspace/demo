@@ -25,6 +25,7 @@ import {
   num,
   onThemeChange,
   quatToEuler,
+  setTone,
 } from "../ui.js";
 import {VERSION_RE} from "../version.js";
 
@@ -181,6 +182,25 @@ const POLL_MS = 200;
  */
 const DIVISORS = {imu: 1, baro: 4, gnss: 10};
 
+/*
+ * Every chart on this panel is drawn to one window, so a bump on the
+ * accelerometer sits directly above the same instant on the gyroscope and the
+ * barometer.
+ *
+ * They cannot get that by each keeping its own last N readings, because the
+ * sources run at wildly different rates: the gyroscope and accelerometer
+ * report at 100 Hz, the magnetometer and barometer at 25. At the 240 samples a
+ * StripChart defaults to, that was 2.4 seconds of gyroscope beside 9.6 of
+ * barometer - four times the history on charts sitting side by side.
+ *
+ * So the charts are sampled on a clock of their own instead, every reading
+ * held until the next replaces it (see `sampleCharts`). 140 points at 25 ms is
+ * three and a half seconds, a little longer than the gyroscope used to hold,
+ * and 40 Hz is fast enough that nothing visible at 100 Hz is lost.
+ */
+const CHART_SPAN = 140;
+const CHART_MS = 25;
+
 const LED_PRESETS = [["Off", [0, 0, 0]], ["White", [255, 255, 255]], ["Red", [255, 0, 0]], ["Green", [0, 255, 0]], ["Blue", [0, 0, 255]], ["Violet", [168, 0, 240]],];
 
 class MomentumDemo {
@@ -215,6 +235,8 @@ class MomentumDemo {
     this.gnssVisible = false;
     this._streamHits = 0;
     this._streamSince = 0;
+    /** When the charts last took a column; see `sampleCharts`. */
+    this._chartAt = 0;
     this._tick = 0;
     this._timer = null;
     this._frame = null;
@@ -266,7 +288,7 @@ class MomentumDemo {
           key: "y", color: AXIS_COLORS.y
         }, {
           key: "z", color: AXIS_COLORS.z
-        },], symmetric: true, minRange, digits: 1,
+        },], span: CHART_SPAN, symmetric: true, minRange, digits: 1,
       });
       const values = {
         x: h("span.axis-value", null, "-"),
@@ -319,10 +341,14 @@ class MomentumDemo {
     /* Environment. */
     this.envFacts = facts([["pressure", "Pressure"], ["temperature", "Temperature"], ["altitude", "Pressure alt."],]);
     this.pressureChart = new StripChart(h("canvas.chart", {"aria-label": "Pressure history"}), {
-      series: [{key: "pressure", color: "--accent"}], minRange: 40, digits: 0,
+      series: [{key: "pressure", color: "--accent"}],
+      span: CHART_SPAN,
+      minRange: 40,
+      digits: 0,
     });
     this.tempChart = new StripChart(h("canvas.chart.chart-short", {"aria-label": "Temperature history"}), {
       series: [{key: "temperature", color: AXIS_COLORS.x}],
+      span: CHART_SPAN,
       minRange: 0.5,
       digits: 1,
     });
@@ -397,8 +423,6 @@ class MomentumDemo {
         break;
       case "barometric":
         this.readings.baro.set(parsed);
-        this.pressureChart.push({pressure: parsed.pressure});
-        this.tempChart.push({temperature: parsed.temperature});
         break;
       // Dropped outright while the card is closed. A stock board only sends
       // these when asked, but the `gnss` and `report` buttons can ask, and a
@@ -425,7 +449,35 @@ class MomentumDemo {
       default:
         break;
     }
+    this.sampleCharts();
     this.requestRender();
+  }
+
+  /**
+   * Take one column across every chart at once.
+   *
+   * Driven by incoming lines rather than a timer, so a board that goes quiet
+   * leaves the traces where they stopped instead of drawing a flat run that
+   * was never measured. Whichever line opens the gate, all the charts are
+   * sampled from the readings as they stand - so a sensor reporting slower
+   * than the gate is held between its own readings, and the charts stay on one
+   * time base whatever their sources are doing.
+   *
+   * A reading that has not arrived at all pushes null, which StripChart draws
+   * as a gap rather than a line along the bottom. That is what keeps the
+   * accelerometer chart empty on firmware that never sends one.
+   */
+  sampleCharts() {
+    const now = performance.now();
+    if (now - this._chartAt < CHART_MS) return;
+    this._chartAt = now;
+
+    const baro = this.readings.baro.value || {};
+    this.pressureChart.push(baro);
+    this.tempChart.push(baro);
+    for (const [key, {chart}] of Object.entries(this.motionBlocks)) {
+      chart.push(this.readings[key].value || {});
+    }
   }
 
   applyTelemetry(f) {
@@ -436,8 +488,6 @@ class MomentumDemo {
     }
     if (has("pres", "temp")) {
       this.readings.baro.set({pressure: f.pres, temperature: f.temp});
-      this.pressureChart.push({pressure: f.pres});
-      this.tempChart.push({temperature: f.temp});
     }
     // A streaming board sends position unasked, so the same gate as the
     // command replies applies: nothing is kept while the card is closed.
@@ -483,7 +533,6 @@ class MomentumDemo {
       if (!has(...axes)) continue;
       const value = {x: f[axes[0]], y: f[axes[1]], z: f[axes[2]]};
       this.readings[key].set(value);
-      if (this.motionBlocks[key]) this.motionBlocks[key].chart.push(value);
     }
   }
 
@@ -664,6 +713,7 @@ class MomentumDemo {
     this.trackPlot.draw();
     if (quality) {
       gnss.fix.textContent = FIX_TYPES[quality.fix] ?? `type ${quality.fix}`;
+      setTone(gnss.fix, FIXED_TYPES.has(quality.fix) ? "ok" : null);
       gnss.satellites.textContent = num(quality.satellites, 0);
       gnss.hdop.textContent = num(quality.hdop, 2);
       gnss.speed.textContent = num(quality.speed, 2, " kn");
@@ -748,6 +798,17 @@ const FIX_TYPES = {
   6: "RTK fixed",
   7: "GNSS fix",
 };
+
+/**
+ * The `nmea_position_fix_t` values that mean the receiver is actually
+ * locating something, and so are worth colouring green.
+ *
+ * Everything below 4 is not a position: still deciding, no fix, or regulation
+ * limited. Those keep the ordinary text colour rather than getting a warning
+ * one - waiting for a fix is what a receiver does for its first few minutes,
+ * not a fault to flag.
+ */
+const FIXED_TYPES = new Set([4, 5, 6, 7]);
 
 /** Direction letters only; before the first fix the field is a NUL byte. */
 function dirLabel(char) {

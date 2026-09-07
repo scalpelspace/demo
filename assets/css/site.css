@@ -38,6 +38,18 @@
   --warn: #8a5a00;
   --error: #c22626;
 
+  /*
+   * Two more, for the states mc_stepper shows on its own WS2812B that the
+   * three above have no name for: cyan while it moves open-loop, blue while it
+   * holds there. Named by hue rather than by role because that is what they
+   * encode - the point is that the text on screen and the LED on the bench say
+   * the same thing. The board's values are tiny (0-5, proportional to
+   * brightness), so these are the hues scaled up and then retuned for
+   * contrast, not the literal numbers.
+   */
+  --state-cyan: #0e7490;
+  --state-blue: #1d4ed8;
+
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
   Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
@@ -72,6 +84,8 @@
     --ok: #3ddc84;
     --warn: #f5b942;
     --error: #ff6b6b;
+    --state-cyan: #22d3ee;
+    --state-blue: #7aa7ff;
   }
 }
 
@@ -771,6 +785,36 @@ input[type="number"] {
  */
 .facts.stale dd {
   opacity: 0.45;
+}
+
+/*
+ * A readout that says something about health rather than magnitude, coloured
+ * to match whatever the board itself is signalling. The tone is set from the
+ * product module, so the mapping from a device's states to these five lives
+ * with the device rather than in the stylesheet.
+ *
+ * Absent means the ordinary text colour, which is what "nothing to report"
+ * should look like - a page where every value is coloured says nothing with
+ * colour at all.
+ */
+[data-tone="ok"] {
+  color: var(--ok);
+}
+
+[data-tone="warn"] {
+  color: var(--warn);
+}
+
+[data-tone="error"] {
+  color: var(--error);
+}
+
+[data-tone="cyan"] {
+  color: var(--state-cyan);
+}
+
+[data-tone="blue"] {
+  color: var(--state-blue);
 }
 
 .banner.note {

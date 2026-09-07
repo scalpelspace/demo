@@ -23,7 +23,9 @@
  * Firmware reference: https://github.com/scalpelspace/mc_stepper
  */
 
-import {DialGauge, StripChart, facts, h, num, onThemeChange} from "../ui.js";
+import {
+  DialGauge, StripChart, facts, h, num, onThemeChange, setTone
+} from "../ui.js";
 import {VERSION_RE} from "../version.js";
 
 /* --------------------------------------------------------------- parsing - */
@@ -400,6 +402,23 @@ const CONFIG_COMMANDS = ["motion", "cur", "gains", "sg"];
 
 /** Control states in which the loop is live and the motor may move. */
 const LIVE_STATES = new Set(["idle", "start", "executing", "on_target"]);
+
+/**
+ * The colour the board is showing on its own WS2812B, so the word on screen
+ * and the LED on the bench agree. Taken from the `led_status_run` switch:
+ *
+ *   executing   yellow, or cyan while the move is open-loop
+ *   on_target   green, or blue while holding open-loop
+ *   fault       red
+ *
+ * `start` is missing here for the same reason it sets no colour in firmware -
+ * it is a transition, gone before either could be read. `idle` and `disable`
+ * are missing on purpose too: the board lights them dimly to show it is alive,
+ * which a web page does not need to prove, so they keep the ordinary text
+ * colour and the coloured states stand out against them.
+ */
+const STATE_TONES = {executing: "warn", on_target: "ok", fault: "error"};
+const OPEN_LOOP_TONES = {executing: "cyan", on_target: "blue"};
 
 class StepperDemo {
   /**
@@ -931,6 +950,11 @@ class StepperDemo {
     this.stateBadge.lastChild.textContent = state ? state : "Unknown";
     if (state) controlValues.state.textContent = state;
     if (control.mode) controlValues.mode.textContent = control.mode;
+
+    // Open-loop is a mode, not a state, so which of the two tables applies
+    // depends on both - exactly as the firmware's `open_loop` branch does.
+    const openLoop = control.mode === "ol";
+    setTone(controlValues.state, (openLoop && OPEN_LOOP_TONES[state]) || STATE_TONES[state]);
     if (Number.isFinite(motion.stepRate)) {
       controlValues.stepRate.textContent = num(motion.stepRate, 1, " steps/s");
     }
