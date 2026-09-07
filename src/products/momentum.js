@@ -16,16 +16,16 @@
  */
 
 import {
-  StripChart,
   AXIS_COLORS,
-  OrientationView,
-  TrackPlot,
   facts,
   h,
   num,
   onThemeChange,
+  OrientationView,
   quatToEuler,
   setTone,
+  StripChart,
+  TrackPlot,
 } from "../ui.js";
 import {VERSION_RE} from "../version.js";
 
@@ -33,6 +33,27 @@ import {VERSION_RE} from "../version.js";
 
 /** A C `printf` float, in any of the forms `%f` and `%.3f` can produce. */
 const FLOAT = "[-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?";
+
+/**
+ * The UTC stamp, `%u/%u/%u %u:%u:%u`. Every part but the year is printed with
+ * no padding - `2026/9/7 2:59:43` - so nothing here may assume two digits.
+ * Padding is the display's job, in render.
+ *
+ * The same stamp appears twice: on its own as the first line the `gnss`
+ * command prints, and again as the last field of the streamed altitude line.
+ * One definition, so the two cannot drift apart.
+ */
+const DATETIME = "(\\d{4})/(\\d{1,2})/(\\d{1,2}) (\\d{1,2}):(\\d{1,2}):(\\d{1,2})";
+const DATETIME_RE = new RegExp(`^${DATETIME}$`);
+
+const parseDatetime = (m) => ({
+  year: Number(m[1]),
+  month: Number(m[2]),
+  day: Number(m[3]),
+  hour: Number(m[4]),
+  minute: Number(m[5]),
+  second: Number(m[6]),
+});
 
 /**
  * Every line the firmware can print, as one dispatch table.
@@ -67,16 +88,7 @@ const PATTERNS = [// "momentum 0.6.0.p", shared with the connect handshake.
     map: (m) => ({temperature: Number(m[1]), pressure: Number(m[2])}),
   }, // "2026/9/5 12:0:0"
   {
-    kind: "gnssTime",
-    re: /^(\d{4})\/(\d{1,2})\/(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$/,
-    map: (m) => ({
-      year: Number(m[1]),
-      month: Number(m[2]),
-      day: Number(m[3]),
-      hour: Number(m[4]),
-      minute: Number(m[5]),
-      second: Number(m[6]),
-    }),
+    kind: "gnssTime", re: DATETIME_RE, map: parseDatetime,
   }, // "45.123 (N),-75.456 (W), 100.000 m"
   {
     kind: "gnssFix", // The direction group is `.?`, not `.`: the firmware prints an
@@ -98,8 +110,15 @@ const PATTERNS = [// "momentum 0.6.0.p", shared with the connect handshake.
  * Telemetry lines are a comma-separated `key=value` list. Which reading a line
  * carries is decided by its keys, not by any tag in the line itself, so the
  * parse produces a flat bag of fields and the caller sorts them out.
+ *
+ * With one exception, which the trailing group allows for: the altitude line
+ * ends with a bare UTC stamp and no key of its own -
+ * `alt=256.6,gid=-36.300,2026/9/7 2:59:43`. It has to be spelled out here
+ * rather than waved through as "anything after the last comma", because
+ * without it the line matches nothing and `alt` and `gid` are lost along with
+ * the stamp.
  */
-const TELEMETRY_RE = /^[a-z]{1,4}=[^,]*(?:,[a-z]{1,4}=[^,]*)*$/;
+const TELEMETRY_RE = new RegExp(`^[a-z]{1,4}=[^,]*(?:,[a-z]{1,4}=[^,]*)*(?:,${DATETIME})?$`);
 
 function parseLine(line) {
   for (const {kind, re, map} of PATTERNS) {
@@ -110,6 +129,13 @@ function parseLine(line) {
     const fields = {};
     for (const pair of line.split(",")) {
       const at = pair.indexOf("=");
+      if (at < 0) {
+        // The unkeyed tail. `utc` is this parser's own name for it, not
+        // something the firmware sends.
+        const stamp = DATETIME_RE.exec(pair);
+        if (stamp) fields.utc = parseDatetime(stamp);
+        continue;
+      }
       const key = pair.slice(0, at);
       const raw = pair.slice(at + 1);
       const value = Number(raw);
@@ -513,6 +539,13 @@ class MomentumDemo {
           course: f.cdeg,
         });
       }
+      // The stamp riding on the altitude line. Gated with the rest of the
+      // GNSS data rather than treated as a harmless clock reading: it only
+      // arrives because a receiver has a fix, and that is the thing the
+      // closed card is not supposed to reveal.
+      if (f.utc) this.readings.gnssTime.set(f.utc);
+
+      // `comm_tx_rtc()` sends the same wall clock in its own shape.
       if (typeof f.d === "string" && typeof f.t === "string") {
         const date = String(f.d).split("-").map(Number);
         const time = String(f.t).split(":").map(Number);

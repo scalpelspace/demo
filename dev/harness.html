@@ -168,7 +168,9 @@
       emit(`sp=${f(0.4)},cdeg=${f(112.5)},pf=7,sat=11,hdop=${f(0.98)}`);
       const {lat, lon} = this.fix();
       emit(`lat=${f(lat, 6)},lon=${f(lon, 6)}`);
-      emit(`alt=${f(74.2)},gid=${f(-33.1)},s=0`);
+      // The altitude line ends with a bare UTC stamp, none of it zero padded
+      // past the year - `%u/%u/%u %u:%u:%u`.
+      emit(`alt=${f(74.2, 1)},gid=${f(-36.3)},2026/9/7 2:59:${43 + (this.ticks % 15)}`);
     },
   };
 
