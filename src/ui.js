@@ -129,10 +129,12 @@ export class StripChart {
    * @param {HTMLCanvasElement} canvas
    * A series colour may be a custom property name ("--accent"), which is
    * resolved at draw time so the trace follows the light/dark switch the way
-   * the rest of the page does.
+   * the rest of the page does. A series may also carry a `dash` pattern, and
+   * series are painted in the order given - see the loop in `draw`.
    *
-   * @param {{series: {key: string, color: string}[], span?: number,
-   *          symmetric?: boolean, minRange?: number, digits?: number}} options
+   * @param {{series: {key: string, color: string, dash?: number[]}[],
+   *          span?: number, symmetric?: boolean, minRange?: number,
+   *          digits?: number}} options
    */
   constructor(canvas, {
     series, span = 240, symmetric = false, minRange = 0.1, digits = 2
@@ -225,14 +227,22 @@ export class StripChart {
       ctx.fillText(level.toFixed(this.digits), pad.left - 6, y);
     }
 
+    /*
+     * Painted in array order, so the last series ends up on top. That matters
+     * whenever two of them coincide - a loop sitting on its target draws the
+     * measurement and the setpoint along the same pixels - and whichever is
+     * drawn last is the only one visible there. List the reference first and
+     * the measurement last.
+     */
     ctx.lineWidth = 1.5;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-    for (const {key, color} of this.series) {
+    for (const {key, color, dash} of this.series) {
       const points = this.data.get(key);
       // Right-align the trace so the newest sample is always at the edge.
       const offset = this.span - points.length;
       ctx.strokeStyle = color.startsWith("--") ? cssVar(color, "#7a00d4") : color;
+      ctx.setLineDash(dash || []);
       ctx.beginPath();
       let pen = false;
       points.forEach((value, index) => {
@@ -247,6 +257,7 @@ export class StripChart {
       });
       ctx.stroke();
     }
+    ctx.setLineDash([]);
   }
 }
 

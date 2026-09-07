@@ -71,8 +71,12 @@ const READOUTS = {
   "state": ["control", "state", "word"],
   "mode": ["control", "mode", "word"],
   "pos|rad": ["motion", "position", "float"],
-  "pos_sp|rad": ["motion", "positionSetpoint", "float"],
-  "pos_err|rad": ["motion", "positionError", "float"],
+  "pos_sp|rad": ["motion", "positionSetpoint", "float"], /*
+   * `pos_err` is deliberately absent. `stat` prints it, the telemetry stream
+   * does not, and it is exactly the difference of two fields both paths do
+   * send - so it is derived at render time. Routing it as well would leave the
+   * last polled error frozen on screen for as long as a streaming board ran.
+   */
   "vel_sp|rad/s": ["motion", "velocitySetpoint", "float"],
   "step_rate|steps/s": ["motion", "stepRate", "float"],
   "drv_status": ["driver", "status", "hex"],
@@ -95,10 +99,74 @@ const READOUTS = {
 /** The command words whose bare `<word> <number>` reply is an acknowledgement. */
 const MOTION_WORDS = new Set(["pos", "rel", "spd", "ol"]);
 
+/**
+ * The status a build with `MC_STEPPER_FULL_COMM_TELEMETRY` sends on its own:
+ * one line of comma-separated `key=value`, the same shape `momentum` uses.
+ *
+ * It is written for the wire rather than for a reader, and differs from the
+ * `stat` reply in every way that matters to a parser, which is why the two are
+ * parsed separately rather than one being taught to cope with both:
+ *
+ *   - short keys, no units, no spaces:  `p=1.2345` against `pos 1.2345 rad`
+ *   - `s` and `m` are the raw enum ordinals, not the names `stat` prints
+ *   - `drv` is decimal `%u` here and hex `0x%04X` there, so the two routes
+ *     genuinely need different radixes
+ *   - the error and the velocity setpoint are not sent at all; the error is
+ *     derived from the two positions instead (see render)
+ */
+const TELEMETRY_RE = /^[a-z][a-z_]*=[^,]*(?:,[a-z][a-z_]*=[^,]*)*$/;
+
+const TELEMETRY_FIELDS = {
+  s: ["control", "state", "state"],
+  m: ["control", "mode", "mode"],
+  p: ["motion", "position", "float"],
+  sp: ["motion", "positionSetpoint", "float"],
+  sr: ["motion", "stepRate", "float"],
+  drv: ["driver", "status", "int"],
+};
+
+/**
+ * `controls_state_t` and `control_mode_t` by ordinal, spelling each exactly as
+ * `comm_state_name()` and `comm_mode_name()` do. The two paths have to agree:
+ * a polled board sends the name and a streaming one sends the number, and the
+ * rest of this file compares against the name either way.
+ */
+const STATE_NAMES = ["disable", "idle", "start", "executing", "on_target", "fault"];
+const MODE_NAMES = ["none", "pos", "spd", "rel", "ol"];
+
+/** Coerce a printed value for a routing table's declared type, or null. */
+function coerce(raw, type) {
+  if (type === "word") return raw;
+  if (type === "state" || type === "mode") {
+    const names = type === "state" ? STATE_NAMES : MODE_NAMES;
+    const ordinal = Number(raw);
+    if (!Number.isInteger(ordinal) || ordinal < 0) return null;
+    // A firmware that grew an enum value this page has not heard of should
+    // show the number rather than nothing at all.
+    return names[ordinal] ?? `${type} ${ordinal}`;
+  }
+  const value = type === "hex" ? Number.parseInt(raw, 16) : Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
 export function parseLine(line) {
   for (const {kind, re, map} of PATTERNS) {
     const match = re.exec(line);
     if (match) return {kind, ...map(match)};
+  }
+
+  if (TELEMETRY_RE.test(line)) {
+    const readouts = [];
+    for (const pair of line.split(",")) {
+      const at = pair.indexOf("=");
+      const route = TELEMETRY_FIELDS[pair.slice(0, at)];
+      if (!route) continue;
+      const [group, field, type] = route;
+      const value = coerce(pair.slice(at + 1), type);
+      if (value !== null) readouts.push({group, field, value});
+    }
+    // A line of nothing but unknown keys is not this firmware's telemetry.
+    return readouts.length ? {kind: "telemetry", readouts} : null;
   }
 
   const match = READOUT_RE.exec(line);
@@ -108,13 +176,8 @@ export function parseLine(line) {
   const route = READOUTS[unit ? `${name}|${unit}` : name];
   if (route) {
     const [group, field, type] = route;
-    let value = raw;
-    if (type === "float" || type === "int") value = Number(raw);
-    if (type === "hex") value = Number.parseInt(raw, 16);
-    if ((type === "float" || type === "int" || type === "hex") && !Number.isFinite(value)) {
-      return null;
-    }
-    return {kind: "readout", group, field, value};
+    const value = coerce(raw, type);
+    return value === null ? null : {kind: "readout", group, field, value};
   }
 
   if (!unit && MOTION_WORDS.has(name) && new RegExp(`^${FLOAT}$`).test(raw)) {
@@ -263,11 +326,25 @@ class CommandQueue {
  * rate stop mattering is in the firmware: a DMA or interrupt-driven `_write()`
  * would cost the main loop microseconds instead of milliseconds, the way the
  * receive side already works.
+ *
+ * None of it applies to a board built with `MC_STEPPER_FULL_COMM_TELEMETRY`,
+ * which sends the same figures unasked. There the page stops asking (see
+ * `noteStreaming`) and the board's own period is the only thing spending the
+ * loop's time - one 52-byte line, about 4.5 ms of it, however often the
+ * telemetry task runs.
  */
 const POLL_MS = 500;
 
-/** StallGuard's load reading is live, but it is not worth a whole sweep. */
-const SG_EVERY = 4;
+/**
+ * Sweeps between `sg` polls while StallGuard is switched on.
+ *
+ * Every sweep, not every fourth as it was: its chart now shares the motion
+ * charts' time base, and at one reading every two seconds a three-second
+ * window held one point. Twice a second costs about 9 ms/s of blocked control
+ * loop, under 1%, and on a streaming board it is the only thing being polled
+ * at all.
+ */
+const SG_EVERY = 1;
 
 /**
  * Sweeps between polls while the motor is parked. In `disable` and `fault` the
@@ -282,6 +359,40 @@ const PARKED_STATES = new Set(["disable", "fault"]);
 
 /** Queue depth at which the poll stands aside and asks for nothing. */
 const SWEEP_SKIP_AT = 3;
+
+/*
+ * Both motion charts - position against setpoint, and step rate - are built to
+ * the same window, so a feature on one sits directly above the same instant on
+ * the other. Reading them together is the point: the rate is what the loop
+ * asked for and the position is what came of it.
+ *
+ * They can share a window because they share a source. `p` and `sr` arrive in
+ * the same telemetry line, and in the same `stat` reply when polled, so at one
+ * span and one sampling floor the two traces stay in lockstep sample for
+ * sample - not merely equal in duration.
+ *
+ * A StripChart is indexed by sample rather than by time, so the window is the
+ * span times whatever the source's real interval turns out to be: about 6 s
+ * against a 100 ms telemetry period, 3 s at 50 ms, 1.5 s at 25 ms. Sixty
+ * points is deliberately short. It is there to show the shape of one move -
+ * the ramp up, the cruise, the decel - and at the 240 samples a StripChart
+ * defaults to, one point per 100 ms, it held 24 seconds of them: a row of
+ * spikes too narrow to read.
+ *
+ * The floor stops a fast stream from filling those sixty points in a blink. It
+ * does not thin a slow one - a polled board answers every 500 ms and every
+ * answer is kept.
+ */
+const MOTION_SPAN = 60;
+const MOTION_CHART_MS = 25;
+
+/**
+ * Telemetry lines seen inside `STREAM_WINDOW_MS` before the board is taken to
+ * be streaming on its own. One stray line is not a pattern - four inside two
+ * seconds is.
+ */
+const STREAM_HITS = 4;
+const STREAM_WINDOW_MS = 2000;
 
 /** Read once on mount, and again whenever a write echoes new values back. */
 const CONFIG_COMMANDS = ["motion", "cur", "gains", "sg"];
@@ -313,6 +424,11 @@ class StepperDemo {
     };
 
     this.polling = false;
+    /** Set once the board proves it sends its status without being asked. */
+    this.streaming = false;
+    this._streamHits = 0;
+    this._streamSince = 0;
+    this._chartAt = {};
     this._tick = 0;
     this._timer = null;
     this._frame = null;
@@ -387,6 +503,21 @@ class StepperDemo {
     this.statusFlags = h("div.flags", null, STATUS_BITS.map(({
                                                                bit, label
                                                              }) => h("span.flag", {dataset: {bit: String(bit)}}, label)));
+
+    /*
+     * Step rate is the control loop's output - what it is actually asking the
+     * driver to do - so its history is the motion profile: the accel ramp, the
+     * cruise, the decel into the target. Signed and centred on zero, because
+     * the sign is the direction and a reversal should read as one rather than
+     * as a dip.
+     */
+    this.rateChart = new StripChart(h("canvas.chart.chart-short", {"aria-label": "Step rate history"}), {
+      series: [{key: "stepRate", color: "--accent"}],
+      span: MOTION_SPAN,
+      symmetric: true,
+      minRange: 100,
+      digits: 0,
+    });
     grid.append(this.card({
       title: "Control",
       id: "cardControl",
@@ -403,16 +534,26 @@ class StepperDemo {
         h("button", {type: "button", onclick: () => this.run("zero")}, "Zero"), //
         h("button", {
           type: "button", onclick: () => this.run("clr")
-        }, "Clear fault")), this.controlFacts.el, h("p.chart-label", null, "Status flags"), this.statusFlags,],
+        }, "Clear fault")), this.controlFacts.el, h("p.chart-label", null, "Step rate (steps/s)"), this.rateChart.canvas, h("p.chart-label", null, "Status flags"), this.statusFlags,],
     }));
 
     /* Position. */
     this.dial = new DialGauge(h("canvas.dial-canvas", {"aria-label": "Shaft angle"}));
     this.positionFacts = facts([["position", "Position"], ["setpoint", "Setpoint"], ["error", "Error"],]);
+    /*
+     * Setpoint first, measurement last, so the measurement paints over it.
+     * A loop that has reached its target puts the two traces on the same
+     * pixels, and the other way round the whole chart went grey exactly when
+     * it was doing its job.
+     *
+     * Dashed for the target, solid for what the encoder reads - the same
+     * language the dial above uses for its two pointers, and it keeps the
+     * setpoint legible underneath rather than hidden by the line on top.
+     */
     this.positionChart = new StripChart(h("canvas.chart", {"aria-label": "Position history"}), {
-      series: [{key: "position", color: "--accent"}, {
-        key: "setpoint", color: "--text-faint"
-      }], minRange: 0.5, digits: 2,
+      series: [{key: "setpoint", color: "--text-faint", dash: [4, 3]}, {
+        key: "position", color: "--accent"
+      }], span: MOTION_SPAN, minRange: 0.5, digits: 2,
     });
     grid.append(this.card({
       title: "Position",
@@ -472,7 +613,10 @@ class StepperDemo {
      */
     this.stallFacts = facts([["result", "SG_RESULT"], ["stalled", "Stalled"],]);
     this.sgChart = new StripChart(h("canvas.chart.chart-short", {"aria-label": "StallGuard history"}), {
-      series: [{key: "result", color: "--accent"}], minRange: 20, digits: 0,
+      series: [{key: "result", color: "--accent"}],
+      span: MOTION_SPAN,
+      minRange: 20,
+      digits: 0,
     });
     grid.append(this.card({
       title: "StallGuard",
@@ -482,7 +626,7 @@ class StepperDemo {
         h("p.chart-label", null, "Load"), //
         this.stallFacts.el, //
         this.sgChart.canvas, //
-        h("p.hint.card-note", null, "SG_RESULT falls as the motor loads up, and a stall latches once it " + "drops below SGTHRS. It only reads meaningfully while the motor is " + "turning - and the page only asks for it while StallGuard is switched " + "on below, so with it off these hold whatever they last said.")), //
+        h("p.hint.card-note", null, "SG_RESULT falls as the motor loads up, and a stall latches once it " + "drops below SGTHRS. It only reads meaningfully while the motor is " + "turning - and the page only asks for it while StallGuard is switched " + "on below, so with it off these hold whatever they last said. The " + "trace shares its time base with the charts above, so it steps rather " + "than curves: each flat run is one reading held until the next.")), //
         group("Configuration", null, [field("stallEnabled", "Enabled (0 or 1)", {
           min: 0, max: 1, step: 1
         }), field("threshold", "SGTHRS", {
@@ -528,7 +672,7 @@ class StepperDemo {
     this.modeBadge = h("span.conn", {dataset: {state: "idle"}}, h("span.dot", {"aria-hidden": "true"}), h("span", null, "Idle"));
     const status = h("div.card.control-card", null, //
       h("div.card-head", null, h("h2", null, "Live data"), this.modeBadge), //
-      h("p.hint", null, "This firmware executes one command every 20 ms, drops anything sent on " + "top of a line it has not run yet, and prints from the same loop that " + "runs the control law - so the page queues its commands, spaces them " + "out and asks for as little as it can. ", h("code", null, "stat"), " goes out twice a second, once every two while the motor is parked; " + "StallGuard only when it is switched on, and the configuration only " + "when something changes it."));
+      h("p.hint", null, "This firmware executes one command every 20 ms, drops anything sent on " + "top of a line it has not run yet, and prints from the same loop that " + "runs the control law - so the page queues its commands, spaces them " + "out and asks for as little as it can. ", h("code", null, "stat"), " goes out twice a second, once every two while the motor is parked; " + "StallGuard only when it is switched on, and the configuration only " + "when something changes it. A build with ", h("code", null, "MC_STEPPER_FULL_COMM_TELEMETRY"), " sends that status unasked, and is detected - the page then stops " + "asking for it."));
 
     return h("div.product", {id: "productStepper"}, status, grid);
   }
@@ -546,6 +690,10 @@ class StepperDemo {
     switch (parsed.kind) {
       case "readout":
         this.applyReadout(parsed);
+        break;
+      case "telemetry":
+        this.noteStreaming();
+        for (const readout of parsed.readouts) this.applyReadout(readout);
         break;
       case "ack":
         this.log(`${parsed.command} setpoint ${parsed.setpoint}`, "ok");
@@ -570,12 +718,44 @@ class StepperDemo {
   applyReadout({group, field, value}) {
     this.readings[group].merge(field, value);
 
-    if (group === "motion" && field === "position") {
+    /*
+     * The charts are decimated, the readouts are not. A polled board offers a
+     * position twice a second; a streaming one offers it as fast as its
+     * telemetry task runs, which would fill a chart's whole history in a few
+     * seconds and leave it showing a sliver of the move. One point per
+     * MOTION_CHART_MS keeps the window worth looking at either way.
+     *
+     * A gate per chart, not one shared: position and step rate arrive in the
+     * same line (`p=..,sr=..`, and `stat`'s reply likewise), so a single
+     * timestamp would let whichever was parsed first through and block the
+     * other every time. Two gates on the same floor open on the same line, so
+     * the traces stay in lockstep and the charts share an x axis.
+     */
+    if (group === "motion" && field === "position" && this.chartDue("position")) {
       const setpoint = (this.readings.motion.value || {}).positionSetpoint;
       this.positionChart.push({position: value, setpoint});
+
+      /*
+       * StallGuard rides the motion time base rather than its own, so all
+       * three charts span the same window and line up column for column.
+       *
+       * It has to be held between samples, because its source is genuinely
+       * slower: SG_RESULT only comes from the `sg` command, twice a second at
+       * best, while a streaming board sends position up to forty times a
+       * second. So the trace steps rather than curves, and each flat run is
+       * one reading standing in until the next arrives - which is honest, and
+       * makes the polling interval visible as the step width.
+       *
+       * `null` before the first reading leaves a gap rather than drawing a
+       * line along the bottom. The real fix, if this ever matters more than it
+       * does: put SG_RESULT in `comm_tx_status()` and it shares the time base
+       * for a handful of extra bytes on a line already being sent.
+       */
+      const load = (this.readings.stall.value || {}).result;
+      this.sgChart.push({result: Number.isFinite(load) ? load : null});
     }
-    if (group === "stall" && field === "result") {
-      this.sgChart.push({result: value});
+    if (group === "motion" && field === "stepRate" && this.chartDue("stepRate")) {
+      this.rateChart.push({stepRate: value});
     }
     // The configuration inputs are only seeded from the board, never fought
     // over: a value the operator is part-way through typing is left alone.
@@ -584,6 +764,14 @@ class StepperDemo {
     // two live readings, so StallGuard's configuration arrives labelled as
     // status. The readings among them simply have no input to seed.
     if (group === "config" || group === "stall") this.seedConfigInput(field, value);
+  }
+
+  /** Whether `name`'s chart is due another point. See applyReadout. */
+  chartDue(name) {
+    const now = performance.now();
+    if (now - (this._chartAt[name] || 0) < MOTION_CHART_MS) return false;
+    this._chartAt[name] = now;
+    return true;
   }
 
   /** `stall.enabled` is the only field whose input is not named after it. */
@@ -657,14 +845,46 @@ class StepperDemo {
   sweep() {
     const tick = this._tick++;
     if (this.queue.pending.length >= SWEEP_SKIP_AT) return;
-    if (this.parked() && tick % PARKED_EVERY !== 0) return;
 
-    this.queue.push("stat", {coalesce: true});
+    /*
+     * A streaming board sends everything `stat` would, so asking for it as
+     * well is the worst thing the page could do: the reply is 155 bytes of
+     * blocking transmit competing with the telemetry it already sends.
+     * StallGuard's load is not in that stream, so it is still asked for -
+     * and still only when StallGuard is switched on.
+     */
+    if (!this.streaming) {
+      if (this.parked() && tick % PARKED_EVERY !== 0) return;
+      this.queue.push("stat", {coalesce: true});
+    }
     // Asking a board with StallGuard switched off for its load reading buys
     // two constants and a zero, for 4.5 ms of blocked control loop.
     if (this.stallGuardOn() && tick % SG_EVERY === 0) {
       this.queue.push("sg", {coalesce: true});
     }
+  }
+
+  /**
+   * Notice a board that reports on its own, and stop asking it to.
+   *
+   * The page cannot tell a streaming build from a polled one by asking, so it
+   * infers it: unsolicited telemetry, several lines of it, close together.
+   * Once established the poll for `stat` stops for good - a build either has
+   * `MC_STEPPER_FULL_COMM_TELEMETRY` defined or it does not, and it will not
+   * change its mind while the port is open.
+   */
+  noteStreaming() {
+    if (this.streaming) return;
+    const now = performance.now();
+    if (now - this._streamSince > STREAM_WINDOW_MS) {
+      this._streamSince = now;
+      this._streamHits = 0;
+    }
+    if (++this._streamHits < STREAM_HITS) return;
+
+    this.streaming = true;
+    this.log("Streaming telemetry detected; no longer polling `stat`", "ok");
+    this.render();
   }
 
   parked() {
@@ -677,6 +897,8 @@ class StepperDemo {
 
   /** How long a `stat` reading stays live, given the rate it is asked at. */
   freshWindow() {
+    // A streaming board keeps its own schedule, and it is a fast one.
+    if (this.streaming) return FRESH_MS;
     return POLL_MS * (this.parked() ? PARKED_EVERY + 1 : 3);
   }
 
@@ -696,7 +918,7 @@ class StepperDemo {
 
     /* Live badge. */
     this.modeBadge.dataset.state = live ? "ok" : this.polling ? "warn" : "idle";
-    this.modeBadge.lastChild.textContent = live ? "Polling" : this.polling ? "Polling, no replies" : "Stopped";
+    this.modeBadge.lastChild.textContent = this.streaming ? "Streaming" : live ? "Polling" : this.polling ? "Polling, no replies" : "Stopped";
 
     /* Control, including what the driver makes of it. */
     const control = readings.control.value || {};
@@ -723,6 +945,7 @@ class StepperDemo {
     }
     // Every field above arrives in the same `stat` reply, so one staleness.
     this.setStale(this.controlFacts.el, !live && !readings.control.missing);
+    this.rateChart.draw();
 
     /* Position. */
     const position = this.positionFacts.values;
@@ -736,8 +959,10 @@ class StepperDemo {
     if (Number.isFinite(motion.positionSetpoint)) {
       position.setpoint.textContent = num(motion.positionSetpoint, 4, " rad");
     }
-    if (Number.isFinite(motion.positionError)) {
-      position.error.textContent = num(motion.positionError, 4, " rad");
+    // Derived, not read: see the note beside `pos_err` in READOUTS. The dial
+    // draws its error arc from the same two numbers.
+    if (Number.isFinite(motion.position) && Number.isFinite(motion.positionSetpoint)) {
+      position.error.textContent = num(motion.positionSetpoint - motion.position, 4, " rad");
     }
     this.setStale(this.positionFacts.el, !live && !readings.motion.missing);
     this.dial.draw();
@@ -764,6 +989,7 @@ class StepperDemo {
   reflow() {
     this.dial.draw({force: true});
     this.positionChart.draw({force: true});
+    this.rateChart.draw({force: true});
     this.sgChart.draw({force: true});
   }
 
